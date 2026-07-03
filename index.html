@@ -13,7 +13,7 @@
   /* ============================================================
      CONFIGURAÇÃO DO SUPABASE — preencha as duas linhas abaixo.
      Veja o passo a passo no comentário logo acima da tag </script>
-     final do arquivo
+     final do arquivo.
      ============================================================ */
   :root{
     --paper: #ece3ce;
@@ -305,11 +305,9 @@
 <div class="modal-overlay" id="idModal">
   <div class="modal-box">
     <h2>Quem está selecionando?</h2>
-    <p>Seu nome fica salvo neste navegador e é usado pra registrar seus votos. Combine com seu amigo que cada um use o próprio nome, na mesma sala.</p>
+    <p>Seu nome fica salvo neste navegador e é usado pra registrar seus votos. Combine com seu amigo que cada um use o próprio nome.</p>
     <label for="nameInput">Seu nome</label>
     <input id="nameInput" type="text" placeholder="ex: Ana" maxlength="24" autocomplete="off">
-    <label for="roomInput">Sala (combinem o mesmo nome de sala)</label>
-    <input id="roomInput" type="text" placeholder="ex: rpg-do-grupo" maxlength="40" autocomplete="off" value="default">
     <button id="idSaveBtn">Entrar na seleção</button>
   </div>
 </div>
@@ -331,7 +329,6 @@
 
   <div class="id-strip" id="idStrip">
     <span>Jogando como <b id="whoLabel">—</b> <button id="changeNameBtn">trocar nome</button></span>
-    <span>Sala <b id="roomLabel">—</b> <button id="changeRoomBtn">trocar sala</button></span>
   </div>
 
   <div id="dropzone" tabindex="0" role="button" aria-label="Enviar arquivo zip com imagens">
@@ -479,11 +476,11 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
   const idModal = document.getElementById('idModal');
   const nameInput = document.getElementById('nameInput');
-  const roomInput = document.getElementById('roomInput');
   const whoLabel = document.getElementById('whoLabel');
-  const roomLabel = document.getElementById('roomLabel');
   const connBlip = document.getElementById('connBlip');
   const connLabel = document.getElementById('connLabel');
+
+  const ROOM = 'unica-sala'; // sala fixa e única para todo mundo
 
   const DECISION_LABEL = { keep:'Like', maybe:'Handshake', cut:'Dislike' };
   const IMG_RE = /\.(png|jpe?g|gif|webp|bmp|svg)$/i;
@@ -494,7 +491,6 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   let currentId = null;
   let filter = 'all';
   let myName = localStorage.getItem('fakemonName') || '';
-  let room = localStorage.getItem('fakemonRoom') || 'default';
   let remoteVotes = {};       // { pokemonKey: { voterName: decision } }
   let knownVoters = new Set();
   let sb = null;
@@ -502,36 +498,31 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   let realtimeChannel = null;
 
   /* ---------- identidade / sala ---------- */
-  function openIdModal(prefillName, prefillRoom){
+  function openIdModal(prefillName){
     nameInput.value = prefillName || '';
-    roomInput.value = prefillRoom || room;
     idModal.classList.remove('hidden');
     setTimeout(() => nameInput.focus(), 30);
   }
   function closeIdModal(){ idModal.classList.add('hidden'); }
 
-  if(!myName){ openIdModal('', room); } else { closeIdModal(); }
+  if(!myName){ openIdModal(''); } else { closeIdModal(); }
   updateIdStrip();
 
   document.getElementById('idSaveBtn').addEventListener('click', () => {
     const n = nameInput.value.trim();
-    const r = roomInput.value.trim() || 'default';
     if(!n) { nameInput.focus(); return; }
-    myName = n; room = r;
+    myName = n;
     localStorage.setItem('fakemonName', myName);
-    localStorage.setItem('fakemonRoom', room);
     knownVoters.add(myName);
     closeIdModal();
     updateIdStrip();
     initBackend();
   });
 
-  document.getElementById('changeNameBtn').addEventListener('click', () => openIdModal(myName, room));
-  document.getElementById('changeRoomBtn').addEventListener('click', () => openIdModal(myName, room));
+  document.getElementById('changeNameBtn').addEventListener('click', () => openIdModal(myName));
 
   function updateIdStrip(){
     whoLabel.textContent = myName || '—';
-    roomLabel.textContent = room || '—';
   }
 
   /* ---------- backend (supabase ou local) ---------- */
@@ -543,7 +534,7 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
         sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         useSupabase = true;
         connBlip.className = 'blip';
-        connLabel.textContent = `conectado ao supabase · sala "${room}"`;
+        connLabel.textContent = `conectado ao supabase`;
         subscribeRealtime();
       }catch(err){
         console.error(err);
@@ -568,7 +559,7 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
   async function loadFakemonList(){
     if(!useSupabase) return;
-    const { data, error } = await sb.from('fakemon').select('*').eq('room', room).order('name');
+    const { data, error } = await sb.from('fakemon').select('*').eq('room', ROOM).order('name');
     if(error){ console.error(error); return; }
     if(!data || !data.length) return;
     mons = data.map((row, i) => ({
@@ -581,7 +572,7 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
   async function loadVotes(){
     if(useSupabase){
-      const { data, error } = await sb.from('votes').select('*').eq('room', room);
+      const { data, error } = await sb.from('votes').select('*').eq('room', ROOM);
       if(error){ console.error(error); return; }
       remoteVotes = {};
       knownVoters = new Set([myName]);
@@ -591,7 +582,7 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
         knownVoters.add(row.voter);
       });
     } else {
-      const raw = localStorage.getItem('fakemonVotesLocal_' + room);
+      const raw = localStorage.getItem('fakemonVotesLocal_' + ROOM);
       remoteVotes = raw ? JSON.parse(raw) : {};
       knownVoters = new Set([myName]);
       Object.values(remoteVotes).forEach(v => Object.keys(v).forEach(n => knownVoters.add(n)));
@@ -601,8 +592,8 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   function subscribeRealtime(){
     if(!useSupabase) return;
     if(realtimeChannel) sb.removeChannel(realtimeChannel);
-    realtimeChannel = sb.channel('votes-' + room)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'votes', filter: `room=eq.${room}` }, payload => {
+    realtimeChannel = sb.channel('votes-' + ROOM)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'votes', filter: `room=eq.${ROOM}` }, payload => {
         const row = payload.new && Object.keys(payload.new).length ? payload.new : payload.old;
         if(!row) return;
         remoteVotes[row.pokemon_key] = remoteVotes[row.pokemon_key] || {};
@@ -623,12 +614,12 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     knownVoters.add(myName);
     if(useSupabase){
       const { error } = await sb.from('votes').upsert(
-        { room, pokemon_key: key, voter: myName, decision, updated_at: new Date().toISOString() },
+        { room: ROOM, pokemon_key: key, voter: myName, decision, updated_at: new Date().toISOString() },
         { onConflict: 'room,pokemon_key,voter' }
       );
       if(error) console.error(error);
     } else {
-      localStorage.setItem('fakemonVotesLocal_' + room, JSON.stringify(remoteVotes));
+      localStorage.setItem('fakemonVotesLocal_' + ROOM, JSON.stringify(remoteVotes));
     }
   }
 
@@ -677,14 +668,14 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
           const name = humanizeName(entry.name);
           const key = keyFor(name);
           const ext = (entry.name.split('.').pop() || 'png').toLowerCase();
-          const path = `${room}/${key}.${ext}`;
+          const path = `${ROOM}/${key}.${ext}`;
           const contentType = EXT_MIME[ext] || 'application/octet-stream';
 
           const { error: upErr } = await sb.storage.from(BUCKET).upload(path, blob, { upsert: true, contentType });
           if(upErr) console.error('upload', name, upErr);
 
           const { error: insErr } = await sb.from('fakemon').upsert(
-            { room, key, name, storage_path: path },
+            { room: ROOM, key, name, storage_path: path },
             { onConflict: 'room,key' }
           );
           if(insErr) console.error('insert', name, insErr);
