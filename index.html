@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fakemon Selector</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  /* ============================================================
+     CONFIGURAÇÃO DO SUPABASE — preencha as duas linhas abaixo.
+     Veja o passo a passo no comentário logo acima da tag </script>
+     final do arquivo.
+     ============================================================ */
+  :root{
+    --paper: #ece3ce;
+    --paper-2: #e2d7bc;
+    --line: #c6b892;
+    --ink: #2a2116;
+    --ink-soft: #5b4f3d;
+    --navy: #24405e;
+    --red: #b43a2c;
+    --amber: #c58a1f;
+    --green: #2f6b40;
+    --red-ink: #8f2c20;
+    --amber-ink: #96690f;
+    --green-ink: #21502e;
+    --card-shadow: 0 1px 0 rgba(42,33,22,.15), 0 10px 24px -14px rgba(42,33,22,.55);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      repeating-linear-gradient(180deg, transparent 0 27px, rgba(198,184,146,.55) 27px 28px),
+      radial-gradient(circle at 15% 0%, #f2e9d4 0%, var(--paper) 45%, var(--paper-2) 100%);
+    background-attachment: fixed;
+    color: var(--ink);
+    font-family: 'IBM Plex Mono', monospace;
+    min-height: 100vh;
+    padding: 28px 18px 80px;
+  }
+  .wrap{max-width: 1000px; margin: 0 auto;}
+
+  /* ---- Selector marquee ---- */
+  .marquee{
+    display:flex; align-items:center; gap:10px;
+    background: var(--ink); color: var(--paper);
+    font-family:'IBM Plex Mono',monospace; font-weight:700; font-size:11px;
+    letter-spacing:3px; text-transform:uppercase;
+    padding: 7px 14px; border-radius: 3px 3px 0 0;
+  }
+  .marquee .blip{ width:7px; height:7px; border-radius:50%; background: var(--green); flex-shrink:0; }
+  .marquee .blip.off{ background:#a08; }
+  .marquee .blip.local{ background: var(--amber); }
+
+  header{
+    display:flex; align-items:flex-end; justify-content:space-between; gap:16px;
+    background: rgba(255,255,255,.28);
+    border: 1px solid var(--line); border-top:none;
+    border-bottom: 3px solid var(--ink);
+    padding: 16px 16px 14px; margin-bottom: 18px; flex-wrap:wrap;
+  }
+  h1{
+    font-family:'Special Elite', monospace;
+    font-size: clamp(28px, 5vw, 44px);
+    letter-spacing: .5px;
+    margin: 0 0 4px;
+    color: var(--ink);
+  }
+  h1 .sel{ color: var(--navy); }
+  .subtitle{ margin:0; color: var(--ink-soft); font-size: 13px; letter-spacing:.5px;}
+  .tally{
+    display:flex; gap: 14px; font-size: 12px; font-weight:600; text-transform:uppercase; letter-spacing:.6px;
+  }
+  .tally span{display:block; font-family:'Special Elite',monospace; font-size:18px; text-transform:none; letter-spacing:0;}
+  .tally .t-green{color:var(--green-ink);}
+  .tally .t-amber{color:var(--amber-ink);}
+  .tally .t-red{color:var(--red-ink);}
+  .tally .t-pend{color:var(--ink-soft);}
+
+  /* ---- Identity / room strip ---- */
+  .id-strip{
+    display:flex; align-items:center; gap:18px; flex-wrap:wrap;
+    font-size:11px; color: var(--ink-soft); margin-bottom: 18px;
+    padding: 8px 12px; background: rgba(255,255,255,.35); border:1px solid var(--line); border-radius:3px;
+  }
+  .id-strip b{ color: var(--ink); font-weight:700; }
+  .id-strip button{
+    font-family:'IBM Plex Mono',monospace; font-size:10px; text-transform:uppercase; letter-spacing:.4px;
+    background:transparent; border:1px solid var(--ink-soft); color:var(--ink-soft);
+    padding:3px 8px; border-radius:3px; cursor:pointer;
+  }
+  .id-strip button:hover{ border-color:var(--ink); color:var(--ink); }
+
+  /* ---- Progress gauge ---- */
+  .progress-wrap{ margin-bottom: 20px; }
+  .progress-label{ display:flex; justify-content:space-between; font-size:10px; letter-spacing:.6px; text-transform:uppercase; color:var(--ink-soft); margin-bottom:5px; }
+  .progress-track{ height:10px; background:#d9cca4; border:1px solid var(--line); border-radius:6px; overflow:hidden; }
+  .progress-fill{ height:100%; background: linear-gradient(90deg, var(--navy), var(--green)); width:0%; transition: width .25s ease; }
+
+  /* ---- Upload tray ---- */
+  #dropzone{
+    border: 2px dashed var(--ink-soft);
+    border-radius: 4px;
+    background: rgba(255,255,255,.35);
+    padding: 46px 20px;
+    text-align:center;
+    cursor:pointer;
+    transition: background .15s ease, border-color .15s ease, transform .1s ease;
+  }
+  #dropzone:hover, #dropzone.drag{
+    background: rgba(255,255,255,.6);
+    border-color: var(--navy);
+  }
+  #dropzone:focus-visible{ outline: 3px solid var(--navy); outline-offset: 3px; }
+  #dropzone svg{ width:42px; height:42px; stroke:var(--ink-soft); margin-bottom:10px;}
+  #dropzone .dz-title{ font-family:'Special Elite',monospace; font-size:17px; margin-bottom:6px;}
+  #dropzone .dz-sub{ color:var(--ink-soft); font-size:12px;}
+  #fileInput{ display:none; }
+
+  #app{ display:none; }
+  #app.active{ display:block; }
+  #dropzone.hidden{ display:none; }
+
+  /* ---- Filter tabs ---- */
+  .tabs{ display:flex; gap:8px; margin: 0 0 16px; flex-wrap:wrap; }
+  .tab{
+    font-family:'IBM Plex Mono',monospace; font-size:12px; font-weight:600; letter-spacing:.4px; text-transform:uppercase;
+    background:transparent; border:1.5px solid var(--ink); color:var(--ink);
+    padding:7px 12px; border-radius: 3px; cursor:pointer;
+  }
+  .tab.active{ background: var(--ink); color: var(--paper); }
+  .tab:focus-visible{ outline: 3px solid var(--navy); outline-offset:2px;}
+
+  /* ---- Review card ---- */
+  #reviewSection{ display:flex; gap:26px; flex-wrap:wrap; align-items:flex-start; margin-bottom:34px;}
+  .card{
+    position:relative;
+    background: #fbf7ec;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    box-shadow: var(--card-shadow);
+    padding: 18px 18px 22px;
+    width: 300px;
+    flex-shrink:0;
+  }
+  .card::before{
+    content:"SELEÇÃO";
+    position:absolute; top:-9px; left:22px;
+    font-family:'IBM Plex Mono',monospace; font-size:9px; font-weight:700; letter-spacing:2px;
+    background: var(--navy); color:#fff;
+    padding: 3px 8px; border-radius:2px;
+  }
+  .photo-frame{
+    width:100%; aspect-ratio: 1/1; background: repeating-linear-gradient(45deg,#f0ead9,#f0ead9 10px,#e8e0c9 10px,#e8e0c9 20px);
+    border: 1px solid var(--line); border-radius:2px; overflow:hidden;
+    display:flex; align-items:center; justify-content:center; margin-top:14px;
+  }
+  .photo-frame img{ width:100%; height:100%; object-fit:contain; image-rendering:pixelated; background:#fff;}
+  .card-name{
+    font-family:'Special Elite', monospace;
+    font-size:22px; text-align:center; margin: 14px 0 4px;
+  }
+  .card-index{ text-align:center; color:var(--ink-soft); font-size:11px; letter-spacing:.6px; text-transform:uppercase; margin-bottom:10px;}
+  .stamp-mark{
+    position:absolute; top:36px; right:14px;
+    font-family:'Special Elite',monospace;
+    font-size: 15px; letter-spacing:1px;
+    border: 3px solid; border-radius: 4px;
+    padding: 3px 8px;
+    transform: rotate(-14deg);
+    opacity:0; pointer-events:none;
+    transition: opacity .12s ease, transform .12s ease;
+  }
+  .stamp-mark.show{ opacity:.9; }
+  .stamp-mark.keep{ color:var(--green-ink); border-color:var(--green-ink); }
+  .stamp-mark.maybe{ color:var(--amber-ink); border-color:var(--amber-ink); }
+  .stamp-mark.cut{ color:var(--red-ink); border-color:var(--red-ink); }
+
+  .decision-row{ display:flex; gap:10px; margin-top:16px; justify-content:center; }
+  .stamp-btn{
+    display:flex; flex-direction:column; align-items:center; gap:5px;
+    border:none; cursor:pointer; background:transparent;
+    font-family:'IBM Plex Mono',monospace; font-size:10px; font-weight:600; letter-spacing:.4px; text-transform:uppercase;
+    color: var(--ink);
+    padding: 4px;
+  }
+  .stamp-btn .circ{
+    width:52px; height:52px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    border:2.5px solid; transition: transform .08s ease, background .12s ease, color .12s ease;
+    background:#fff;
+  }
+  .stamp-btn .circ svg{ width:24px; height:24px; }
+  .stamp-btn.dislike .circ{ border-color:var(--red); color:var(--red);}
+  .stamp-btn.handshake .circ{ border-color:var(--amber); color:var(--amber);}
+  .stamp-btn.like .circ{ border-color:var(--green); color:var(--green);}
+  .stamp-btn:hover .circ, .stamp-btn:focus-visible .circ{ transform: scale(1.08); }
+  .stamp-btn.dislike:hover .circ, .stamp-btn.dislike:focus-visible .circ{ background:var(--red); color:#fff;}
+  .stamp-btn.handshake:hover .circ, .stamp-btn.handshake:focus-visible .circ{ background:var(--amber); color:#fff;}
+  .stamp-btn.like:hover .circ, .stamp-btn.like:focus-visible .circ{ background:var(--green); color:#fff;}
+  .stamp-btn:active .circ{ transform: scale(.92) rotate(-6deg); }
+  .stamp-btn:focus-visible{ outline: 3px solid var(--navy); outline-offset:2px; border-radius: 50%;}
+
+  .card.stamped .decision-row{ opacity:.55; }
+
+  /* ---- Votes panel (histórico de votos) ---- */
+  .votes-panel{
+    margin-top:16px; padding-top:14px; border-top:1px dashed var(--line);
+  }
+  .votes-panel .vp-label{ font-size:10px; letter-spacing:.6px; text-transform:uppercase; color:var(--ink-soft); margin-bottom:8px; }
+  .vote-pill{
+    display:inline-flex; align-items:center; gap:6px;
+    font-size:11px; font-weight:600; letter-spacing:.2px;
+    padding:4px 9px; border-radius:20px; border:1.5px solid var(--line);
+    margin: 0 6px 6px 0; background:#fff; color:var(--ink-soft);
+  }
+  .vote-pill .pdot{ width:8px; height:8px; border-radius:50%; background:#bbb; flex-shrink:0; }
+  .vote-pill.v-keep{ border-color:var(--green); color:var(--green-ink); }
+  .vote-pill.v-keep .pdot{ background:var(--green); }
+  .vote-pill.v-maybe{ border-color:var(--amber); color:var(--amber-ink); }
+  .vote-pill.v-maybe .pdot{ background:var(--amber); }
+  .vote-pill.v-cut{ border-color:var(--red); color:var(--red-ink); }
+  .vote-pill.v-cut .pdot{ background:var(--red); }
+
+  .review-side{
+    flex:1; min-width:240px; padding-top: 6px;
+  }
+  .review-side h2{ font-family:'Special Elite',monospace; font-size:16px; margin:0 0 8px;}
+  .review-side p{ color:var(--ink-soft); font-size:13px; line-height:1.5; margin:0 0 14px; max-width:44ch;}
+  .kbd-hint{ display:flex; gap:14px; flex-wrap:wrap; font-size:11px; color:var(--ink-soft); margin-bottom: 18px;}
+  .kbd-hint kbd{
+    background:#fff; border:1px solid var(--line); border-bottom-width:2px; border-radius:3px;
+    padding:2px 6px; font-family:'IBM Plex Mono',monospace; color:var(--ink); margin-right:4px;
+  }
+  .done-msg{ font-family:'Special Elite',monospace; font-size:16px; color:var(--green-ink);}
+
+  #exportBtn, #resetBtn{
+    font-family:'IBM Plex Mono',monospace; font-weight:700; font-size:12px; letter-spacing:.4px; text-transform:uppercase;
+    padding:11px 18px; border-radius:3px; cursor:pointer; border:2px solid var(--ink); background:var(--ink); color:var(--paper);
+    margin-right:10px;
+  }
+  #resetBtn{ background:transparent; color:var(--ink); }
+  #exportBtn:focus-visible, #resetBtn:focus-visible{ outline: 3px solid var(--navy); outline-offset:2px;}
+
+  /* ---- Grid ---- */
+  .grid-title{ font-family:'Special Elite',monospace; font-size:15px; margin: 6px 0 10px; }
+  .thumb-grid{
+    display:grid; grid-template-columns: repeat(auto-fill, minmax(100px,1fr)); gap:10px; margin-bottom: 30px;
+  }
+  .thumb{
+    position:relative; background:#fbf7ec; border:1px solid var(--line); border-radius:3px; padding:6px;
+    cursor:pointer; text-align:center;
+  }
+  .thumb.current{ outline: 2px solid var(--navy); outline-offset:1px;}
+  .thumb img{ width:100%; aspect-ratio:1/1; object-fit:contain; background: #f0ead9; image-rendering:pixelated;}
+  .thumb .tname{ font-size:9.5px; margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .thumb .mini-dots{ display:flex; justify-content:center; gap:3px; margin-top:4px; }
+  .thumb .mini-dots .md{ width:7px; height:7px; border-radius:2px; background:#d8cca3; border:1px solid rgba(0,0,0,.15); }
+  .thumb .mini-dots .md.keep{ background:var(--green); }
+  .thumb .mini-dots .md.maybe{ background:var(--amber); }
+  .thumb .mini-dots .md.cut{ background:var(--red); }
+  .thumb:focus-visible{ outline: 3px solid var(--navy); outline-offset:2px;}
+
+  footer{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; border-top: 2px solid var(--ink); padding-top:16px;}
+  .foot-note{ font-size:11px; color:var(--ink-soft); }
+
+  /* ---- Identity modal ---- */
+  .modal-overlay{
+    position:fixed; inset:0; background: rgba(20,16,10,.55);
+    display:flex; align-items:center; justify-content:center; z-index: 50; padding:18px;
+  }
+  .modal-overlay.hidden{ display:none; }
+  .modal-box{
+    background: var(--paper); border:1px solid var(--line); border-radius:4px;
+    box-shadow: var(--card-shadow); padding: 26px 24px; max-width: 360px; width:100%;
+  }
+  .modal-box h2{ font-family:'Special Elite',monospace; font-size:19px; margin:0 0 6px; }
+  .modal-box p{ font-size:12.5px; color:var(--ink-soft); margin:0 0 16px; line-height:1.5; }
+  .modal-box label{ display:block; font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:var(--ink-soft); margin-bottom:5px; }
+  .modal-box input{
+    width:100%; font-family:'IBM Plex Mono',monospace; font-size:14px; padding:9px 10px;
+    border:1px solid var(--line); border-radius:3px; background:#fff; color:var(--ink); margin-bottom:14px;
+  }
+  .modal-box input:focus-visible{ outline:3px solid var(--navy); outline-offset:1px; }
+  .modal-box button{
+    width:100%; font-family:'IBM Plex Mono',monospace; font-weight:700; font-size:13px; letter-spacing:.5px; text-transform:uppercase;
+    padding:11px; border-radius:3px; cursor:pointer; border:2px solid var(--ink); background:var(--ink); color:var(--paper);
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ transition:none !important; animation:none !important;}
+  }
+  @media (max-width: 620px){
+    #reviewSection{ justify-content:center; }
+    .card{ width: 100%; max-width:320px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="modal-overlay" id="idModal">
+  <div class="modal-box">
+    <h2>Quem está selecionando?</h2>
+    <p>Seu nome fica salvo neste navegador e é usado pra registrar seus votos. Combine com seu amigo que cada um use o próprio nome.</p>
+    <label for="nameInput">Seu nome</label>
+    <input id="nameInput" type="text" placeholder="ex: Ana" maxlength="24" autocomplete="off">
+    <button id="idSaveBtn">Entrar na seleção</button>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <div class="marquee">
+    <span class="blip" id="connBlip"></span>
+    <span id="connLabel">verificando conexão…</span>
+  </div>
+
+  <header>
+    <div>
+      <h1>FAKEMON <span class="sel">SELECTOR</span></h1>
+      <p class="subtitle">solte o zip, avalie cada fakemon, monte o roster do RPG em dupla</p>
+    </div>
+    <div class="tally" id="tally"></div>
+  </header>
+
+  <div class="id-strip" id="idStrip">
+    <span>Jogando como <b id="whoLabel">—</b> <button id="changeNameBtn">trocar nome</button></span>
+  </div>
+
+  <div id="dropzone" tabindex="0" role="button" aria-label="Enviar arquivo zip com imagens">
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
+    <div class="dz-title">Solte o .zip aqui ou clique para escolher</div>
+    <div class="dz-sub">só a primeira pessoa da sala precisa enviar o zip — as imagens sobem pro Supabase e o resto da equipe já entra vendo tudo</div>
+    <input type="file" id="fileInput" accept=".zip">
+  </div>
+
+  <div id="app">
+    <div class="progress-wrap">
+      <div class="progress-label"><span>Seu progresso</span><span id="progressText">0 / 0</span></div>
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+    </div>
+
+    <div class="tabs" id="tabs">
+      <button class="tab active" data-filter="all">Todos</button>
+      <button class="tab" data-filter="pend">Pendentes</button>
+      <button class="tab" data-filter="keep">Mantidos</button>
+      <button class="tab" data-filter="maybe">Talvez</button>
+      <button class="tab" data-filter="cut">Cortados</button>
+    </div>
+
+    <section id="reviewSection">
+      <div class="card" id="reviewCard">
+        <div class="stamp-mark" id="stampMark">MANTER</div>
+        <div class="photo-frame"><img id="reviewImg" alt=""></div>
+        <div class="card-name" id="reviewName">—</div>
+        <div class="card-index" id="reviewIndex">— / —</div>
+        <div class="decision-row">
+          <button class="stamp-btn dislike" id="btnDislike" title="Dislike (←)">
+            <span class="circ"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M17 14V4M17 4h-6.5a2 2 0 00-2 1.6L7 12v7h9.2a2 2 0 002-1.6L20 10a2 2 0 00-2-2.4H17"/><path d="M7 12H4v7h3"/></svg></span>
+            Dislike
+          </button>
+          <button class="stamp-btn handshake" id="btnHandshake" title="Handshake (↓)">
+            <span class="circ"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12l4-4 4 3 3-3 3 3 4-4 2 2-6 6-3-2-3 3-4-4z"/></svg></span>
+            Handshake
+          </button>
+          <button class="stamp-btn like" id="btnLike" title="Like (→)">
+            <span class="circ"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M7 10V20M7 20H4v-7h3M7 10l3-7a2 2 0 012 1.6V10h6.5a2 2 0 012 2.4l-1.5 6.5a2 2 0 01-2 1.6H7"/></svg></span>
+            Like
+          </button>
+        </div>
+        <div class="votes-panel">
+          <div class="vp-label">Histórico de votos</div>
+          <div id="votesPanel"></div>
+        </div>
+      </div>
+
+      <div class="review-side">
+        <h2 id="sideTitle">Selecionando</h2>
+        <p id="sideText">Vote em cada fakemon: <strong style="color:var(--red-ink)">dislike</strong> pra fora do roster, <strong style="color:var(--amber-ink)">handshake</strong> se ficar em dúvida, <strong style="color:var(--green-ink)">like</strong> pra dentro.</p>
+        <div class="kbd-hint">
+          <span><kbd>←</kbd>dislike</span>
+          <span><kbd>↓</kbd>handshake</span>
+          <span><kbd>→</kbd>like</span>
+        </div>
+      </div>
+    </section>
+
+    <div class="grid-title" id="gridTitle">Todos</div>
+    <div class="thumb-grid" id="thumbGrid"></div>
+
+    <footer>
+      <button id="exportBtn">Exportar seleção (.json)</button>
+      <button id="resetBtn">Carregar outro zip</button>
+      <span class="foot-note">as imagens ficam só no seu navegador — apenas os votos são compartilhados</span>
+    </footer>
+  </div>
+
+</div>
+
+<script>
+/* ============================================================
+   PASSO A PASSO — SUPABASE (gratuito), pra compartilhar os
+   votos entre você e seu amigo:
+
+   1. Crie um projeto grátis em https://supabase.com
+   2. No SQL Editor do projeto, rode:
+
+      create table votes (
+        id bigint generated always as identity primary key,
+        room text not null,
+        pokemon_key text not null,
+        voter text not null,
+        decision text not null,
+        updated_at timestamptz default now(),
+        unique (room, pokemon_key, voter)
+      );
+      alter table votes enable row level security;
+      create policy "public read"   on votes for select using (true);
+      create policy "public insert" on votes for insert with check (true);
+      create policy "public update" on votes for update using (true);
+
+      create table fakemon (
+        id bigint generated always as identity primary key,
+        room text not null,
+        key text not null,
+        name text not null,
+        storage_path text not null,
+        created_at timestamptz default now(),
+        unique (room, key)
+      );
+      alter table fakemon enable row level security;
+      create policy "public read fakemon"   on fakemon for select using (true);
+      create policy "public insert fakemon" on fakemon for insert with check (true);
+      create policy "public update fakemon" on fakemon for update using (true);
+
+   3. Crie o bucket de imagens: em Storage, clique em "New bucket",
+      nome exatamente "fakemon-images", marque como Public bucket.
+      Depois, no SQL Editor, rode pra liberar upload/leitura pública:
+
+      create policy "public read images"   on storage.objects for select using (bucket_id = 'fakemon-images');
+      create policy "public upload images" on storage.objects for insert with check (bucket_id = 'fakemon-images');
+      create policy "public overwrite images" on storage.objects for update using (bucket_id = 'fakemon-images');
+
+   4. (opcional, pra ver o voto do amigo aparecer sem recarregar)
+      Em Database > Replication, ative o Realtime pra tabela "votes".
+
+   5. Em Project Settings > API, copie a "Project URL" e a chave
+      "anon public" e cole nas duas constantes abaixo.
+   ============================================================ */
+const SUPABASE_URL = "https://pfsirvcwdbxpoleuppac.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBmc2lydmN3ZGJ4cG9sZXVwcGFjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMwMzMzMjIsImV4cCI6MjA5ODYwOTMyMn0.qAfkLa5KskNuNs9pUn1tp0fNHbAWBgA9O-47uu-JKgU";
+
+(function(){
+  const dropzone = document.getElementById('dropzone');
+  const fileInput = document.getElementById('fileInput');
+  const app = document.getElementById('app');
+  const tally = document.getElementById('tally');
+  const thumbGrid = document.getElementById('thumbGrid');
+  const gridTitle = document.getElementById('gridTitle');
+  const tabs = document.getElementById('tabs');
+  const progressFill = document.getElementById('progressFill');
+  const progressText = document.getElementById('progressText');
+
+  const reviewCard = document.getElementById('reviewCard');
+  const reviewImg = document.getElementById('reviewImg');
+  const reviewName = document.getElementById('reviewName');
+  const reviewIndex = document.getElementById('reviewIndex');
+  const stampMark = document.getElementById('stampMark');
+  const sideTitle = document.getElementById('sideTitle');
+  const sideText = document.getElementById('sideText');
+  const votesPanel = document.getElementById('votesPanel');
+
+  const idModal = document.getElementById('idModal');
+  const nameInput = document.getElementById('nameInput');
+  const whoLabel = document.getElementById('whoLabel');
+  const connBlip = document.getElementById('connBlip');
+  const connLabel = document.getElementById('connLabel');
+
+  const ROOM = 'unica-sala'; // sala fixa e única para todo mundo
+
+  const DECISION_LABEL = { keep:'Like', maybe:'Handshake', cut:'Dislike' };
+  const IMG_RE = /\.(png|jpe?g|gif|webp|bmp|svg)$/i;
+  const BUCKET = 'fakemon-images';
+  const EXT_MIME = { png:'image/png', jpg:'image/jpeg', jpeg:'image/jpeg', gif:'image/gif', webp:'image/webp', bmp:'image/bmp', svg:'image/svg+xml' };
+
+  let mons = [];        // {id, key, name, url}
+  let currentId = null;
+  let filter = 'all';
+  let myName = localStorage.getItem('fakemonName') || '';
+  let remoteVotes = {};       // { pokemonKey: { voterName: decision } }
+  let knownVoters = new Set();
+  let sb = null;
+  let useSupabase = false;
+  let realtimeChannel = null;
+
+  /* ---------- identidade / sala ---------- */
+  function openIdModal(prefillName){
+    nameInput.value = prefillName || '';
+    idModal.classList.remove('hidden');
+    setTimeout(() => nameInput.focus(), 30);
+  }
+  function closeIdModal(){ idModal.classList.add('hidden'); }
+
+  if(!myName){ openIdModal(''); } else { closeIdModal(); }
+  updateIdStrip();
+
+  document.getElementById('idSaveBtn').addEventListener('click', () => {
+    const n = nameInput.value.trim();
+    if(!n) { nameInput.focus(); return; }
+    myName = n;
+    localStorage.setItem('fakemonName', myName);
+    knownVoters.add(myName);
+    closeIdModal();
+    updateIdStrip();
+    initBackend();
+  });
+
+  document.getElementById('changeNameBtn').addEventListener('click', () => openIdModal(myName));
+
+  function updateIdStrip(){
+    whoLabel.textContent = myName || '—';
+  }
+
+  /* ---------- backend (supabase ou local) ---------- */
+  function initBackend(){
+    const configured = SUPABASE_URL && SUPABASE_ANON_KEY
+      && !SUPABASE_URL.includes('COLE_AQUI') && !SUPABASE_ANON_KEY.includes('COLE_AQUI');
+    if(configured && window.supabase && window.supabase.createClient){
+      try{
+        sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        useSupabase = true;
+        connBlip.className = 'blip';
+        connLabel.textContent = `conectado ao supabase`;
+        subscribeRealtime();
+      }catch(err){
+        console.error(err);
+        useSupabase = false;
+        connBlip.className = 'blip off';
+        connLabel.textContent = 'erro ao conectar ao supabase — rodando local só neste navegador';
+      }
+    } else {
+      useSupabase = false;
+      connBlip.className = 'blip local';
+      connLabel.textContent = 'supabase não configurado — votos ficam só neste navegador';
+    }
+    loadVotes().then(() => loadFakemonList()).then(() => {
+      if(mons.length){
+        dropzone.classList.add('hidden');
+        app.classList.add('active');
+        currentId = mons[0].id;
+        renderAll();
+      }
+    });
+  }
+
+  async function loadFakemonList(){
+    if(!useSupabase) return;
+    const { data, error } = await sb.from('fakemon').select('*').eq('room', ROOM).order('name');
+    if(error){ console.error(error); return; }
+    if(!data || !data.length) return;
+    mons = data.map((row, i) => ({
+      id: i,
+      key: row.key,
+      name: row.name,
+      url: sb.storage.from(BUCKET).getPublicUrl(row.storage_path).data.publicUrl
+    }));
+  }
+
+  async function loadVotes(){
+    if(useSupabase){
+      const { data, error } = await sb.from('votes').select('*').eq('room', ROOM);
+      if(error){ console.error(error); return; }
+      remoteVotes = {};
+      knownVoters = new Set([myName]);
+      (data || []).forEach(row => {
+        remoteVotes[row.pokemon_key] = remoteVotes[row.pokemon_key] || {};
+        remoteVotes[row.pokemon_key][row.voter] = row.decision;
+        knownVoters.add(row.voter);
+      });
+    } else {
+      const raw = localStorage.getItem('fakemonVotesLocal_' + ROOM);
+      remoteVotes = raw ? JSON.parse(raw) : {};
+      knownVoters = new Set([myName]);
+      Object.values(remoteVotes).forEach(v => Object.keys(v).forEach(n => knownVoters.add(n)));
+    }
+  }
+
+  function subscribeRealtime(){
+    if(!useSupabase) return;
+    if(realtimeChannel) sb.removeChannel(realtimeChannel);
+    realtimeChannel = sb.channel('votes-' + ROOM)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'votes', filter: `room=eq.${ROOM}` }, payload => {
+        const row = payload.new && Object.keys(payload.new).length ? payload.new : payload.old;
+        if(!row) return;
+        remoteVotes[row.pokemon_key] = remoteVotes[row.pokemon_key] || {};
+        if(payload.eventType === 'DELETE'){
+          delete remoteVotes[row.pokemon_key][row.voter];
+        } else {
+          remoteVotes[row.pokemon_key][row.voter] = row.decision;
+          knownVoters.add(row.voter);
+        }
+        renderAll();
+      })
+      .subscribe();
+  }
+
+  async function saveVote(key, decision){
+    remoteVotes[key] = remoteVotes[key] || {};
+    remoteVotes[key][myName] = decision;
+    knownVoters.add(myName);
+    if(useSupabase){
+      const { error } = await sb.from('votes').upsert(
+        { room: ROOM, pokemon_key: key, voter: myName, decision, updated_at: new Date().toISOString() },
+        { onConflict: 'room,pokemon_key,voter' }
+      );
+      if(error) console.error(error);
+    } else {
+      localStorage.setItem('fakemonVotesLocal_' + ROOM, JSON.stringify(remoteVotes));
+    }
+  }
+
+  /* ---------- zip / nomes ---------- */
+  function humanizeName(filename){
+    let base = filename.split('/').pop().replace(IMG_RE, '');
+    base = base.replace(/^[0-9]+[\s_\-\.]*/, '');
+    base = base.replace(/[_\-]+/g, ' ').trim();
+    if(!base) base = filename.split('/').pop();
+    return base.replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+  }
+  function keyFor(name){
+    return name.toLowerCase().trim().replace(/\s+/g, '-');
+  }
+
+  async function handleZip(file){
+    dropzone.querySelector('.dz-title').textContent = 'Abrindo o zip...';
+    try{
+      // se a sala já tem imagens sincronizadas no Supabase, usa essas — não reenvia
+      if(useSupabase){
+        await loadFakemonList();
+        if(mons.length){
+          mons.sort((a,b) => a.name.localeCompare(b.name, 'pt-BR'));
+          dropzone.classList.add('hidden');
+          app.classList.add('active');
+          currentId = mons[0].id;
+          renderAll();
+          return;
+        }
+      }
+
+      const zip = await JSZip.loadAsync(file);
+      const entries = Object.values(zip.files).filter(f => !f.dir && IMG_RE.test(f.name));
+      if(entries.length === 0){
+        dropzone.querySelector('.dz-title').textContent = 'Nenhuma imagem encontrada nesse zip — tente outro arquivo';
+        return;
+      }
+
+      mons = [];
+      let i = 0;
+
+      if(useSupabase){
+        for(const entry of entries){
+          dropzone.querySelector('.dz-title').textContent = `Enviando pro Supabase (${i + 1}/${entries.length})...`;
+          const blob = await entry.async('blob');
+          const name = humanizeName(entry.name);
+          const key = keyFor(name);
+          const ext = (entry.name.split('.').pop() || 'png').toLowerCase();
+          const path = `${ROOM}/${key}.${ext}`;
+          const contentType = EXT_MIME[ext] || 'application/octet-stream';
+
+          const { error: upErr } = await sb.storage.from(BUCKET).upload(path, blob, { upsert: true, contentType });
+          if(upErr) console.error('upload', name, upErr);
+
+          const { error: insErr } = await sb.from('fakemon').upsert(
+            { room: ROOM, key, name, storage_path: path },
+            { onConflict: 'room,key' }
+          );
+          if(insErr) console.error('insert', name, insErr);
+
+          const url = sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+          mons.push({ id: i++, key, name, url });
+        }
+      } else {
+        for(const entry of entries){
+          const blob = await entry.async('blob');
+          const url = URL.createObjectURL(blob);
+          const name = humanizeName(entry.name);
+          mons.push({ id: i++, key: keyFor(name), name, url });
+        }
+      }
+
+      mons.sort((a,b) => a.name.localeCompare(b.name, 'pt-BR'));
+      dropzone.classList.add('hidden');
+      app.classList.add('active');
+      currentId = mons[0].id;
+      renderAll();
+    }catch(err){
+      console.error(err);
+      dropzone.querySelector('.dz-title').textContent = 'Não consegui ler esse zip — tente outro arquivo';
+    }
+  }
+
+  dropzone.addEventListener('click', () => fileInput.click());
+  dropzone.addEventListener('keydown', e => { if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); fileInput.click(); } });
+  fileInput.addEventListener('change', e => { if(e.target.files[0]) handleZip(e.target.files[0]); });
+  ['dragover','dragenter'].forEach(ev => dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.add('drag'); }));
+  ['dragleave','drop'].forEach(ev => dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.remove('drag'); }));
+  dropzone.addEventListener('drop', e => {
+    const f = e.dataTransfer.files[0];
+    if(f) handleZip(f);
+  });
+
+  /* ---------- helpers de voto ---------- */
+  function myDecision(key){ return (remoteVotes[key] || {})[myName] || null; }
+  function votesFor(key){ return remoteVotes[key] || {}; }
+
+  function counts(){
+    const c = { keep:0, maybe:0, cut:0, pend:0, all: mons.length };
+    mons.forEach(m => {
+      const d = myDecision(m.key);
+      if(d === 'keep') c.keep++;
+      else if(d === 'maybe') c.maybe++;
+      else if(d === 'cut') c.cut++;
+      else c.pend++;
+    });
+    return c;
+  }
+
+  function renderTally(){
+    const c = counts();
+    tally.innerHTML = `
+      <div class="t-green">${c.keep}<div style="font-size:10px;">mantidos</div></div>
+      <div class="t-amber">${c.maybe}<div style="font-size:10px;">talvez</div></div>
+      <div class="t-red">${c.cut}<div style="font-size:10px;">cortados</div></div>
+      <div class="t-pend">${c.pend}<div style="font-size:10px;">pendentes</div></div>
+    `;
+    const done = c.keep + c.maybe + c.cut;
+    progressText.textContent = `${done} / ${c.all}`;
+    progressFill.style.width = c.all ? `${Math.round(done / c.all * 100)}%` : '0%';
+  }
+
+  function filteredList(){
+    if(filter === 'all') return mons;
+    if(filter === 'pend') return mons.filter(m => !myDecision(m.key));
+    return mons.filter(m => myDecision(m.key) === filter);
+  }
+
+  const FILTER_LABEL = { all:'Todos', pend:'Pendentes', keep:'Mantidos', maybe:'Talvez', cut:'Cortados' };
+
+  function renderGrid(){
+    gridTitle.textContent = FILTER_LABEL[filter];
+    const list = filteredList();
+    if(list.length === 0){
+      thumbGrid.innerHTML = `<p style="color:var(--ink-soft); font-size:13px;">nada por aqui ainda.</p>`;
+      return;
+    }
+    const voters = [...knownVoters].sort();
+    thumbGrid.innerHTML = list.map(m => {
+      const vs = votesFor(m.key);
+      const mine = myDecision(m.key);
+      const dotsHtml = voters.map(v => `<span class="md ${vs[v] || ''}" title="${escapeHtml(v)}: ${vs[v] ? DECISION_LABEL[vs[v]] : 'sem voto'}"></span>`).join('');
+      const tooltip = voters.map(v => `${v}: ${vs[v] ? DECISION_LABEL[vs[v]] : '—'}`).join(' · ');
+      return `
+      <div class="thumb ${m.id === currentId ? 'current' : ''}" tabindex="0" data-id="${m.id}" title="${escapeHtml(tooltip)}">
+        <img src="${m.url}" alt="">
+        <div class="tname">${escapeHtml(m.name)}</div>
+        <div class="mini-dots">${dotsHtml}</div>
+      </div>`;
+    }).join('');
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function pickNextUnreviewed(afterId){
+    const idx = mons.findIndex(m => m.id === afterId);
+    for(let i = 1; i <= mons.length; i++){
+      const cand = mons[(idx + i) % mons.length];
+      if(!myDecision(cand.key)) return cand.id;
+    }
+    return null;
+  }
+
+  function renderVotesPanel(key){
+    const vs = votesFor(key);
+    const voters = [...knownVoters].sort();
+    votesPanel.innerHTML = voters.map(v => {
+      const d = vs[v];
+      const cls = d ? `v-${d}` : '';
+      const label = d ? DECISION_LABEL[d] : 'sem voto ainda';
+      return `<span class="vote-pill ${cls}"><span class="pdot"></span>${escapeHtml(v)}: ${label}</span>`;
+    }).join('');
+  }
+
+  function renderReview(){
+    const mon = mons.find(m => m.id === currentId);
+    const allDone = mons.every(m => myDecision(m.key));
+    if(!mon || allDone){
+      reviewCard.style.visibility = mon ? 'visible' : 'hidden';
+      if(allDone){
+        sideTitle.textContent = 'Seleção completa!';
+        sideText.innerHTML = `<span class="done-msg">✓ você avaliou todos.</span> use as abas abaixo pra revisar ou exportar.`;
+      }
+      if(!mon) return;
+    } else {
+      sideTitle.textContent = 'Selecionando';
+      sideText.innerHTML = `Vote em cada fakemon: <strong style="color:var(--red-ink)">dislike</strong> pra fora do roster, <strong style="color:var(--amber-ink)">handshake</strong> se ficar em dúvida, <strong style="color:var(--green-ink)">like</strong> pra dentro.`;
+    }
+    reviewImg.src = mon.url;
+    reviewImg.alt = mon.name;
+    reviewName.textContent = mon.name;
+    const idx = mons.findIndex(m => m.id === mon.id);
+    reviewIndex.textContent = `${idx + 1} / ${mons.length}`;
+    const mine = myDecision(mon.key);
+    updateStampMark(mine);
+    reviewCard.classList.toggle('stamped', !!mine);
+    renderVotesPanel(mon.key);
+  }
+
+  function updateStampMark(decision){
+    stampMark.classList.remove('show','keep','maybe','cut');
+    if(!decision) return;
+    const map = { keep:['MANTER','keep'], maybe:['TALVEZ','maybe'], cut:['CORTAR','cut'] };
+    const [label, cls] = map[decision];
+    stampMark.textContent = label;
+    stampMark.classList.add('show', cls);
+  }
+
+  function renderAll(){
+    renderTally();
+    renderGrid();
+    renderReview();
+  }
+
+  async function decide(decision){
+    const mon = mons.find(m => m.id === currentId);
+    if(!mon || !myName) return;
+    await saveVote(mon.key, decision);
+    updateStampMark(decision);
+    reviewCard.classList.add('stamped');
+    renderVotesPanel(mon.key);
+    renderTally();
+    renderGrid();
+    const next = pickNextUnreviewed(currentId);
+    setTimeout(() => {
+      if(next !== null) currentId = next;
+      renderReview();
+      renderGrid();
+    }, 260);
+  }
+
+  document.getElementById('btnDislike').addEventListener('click', () => decide('cut'));
+  document.getElementById('btnHandshake').addEventListener('click', () => decide('maybe'));
+  document.getElementById('btnLike').addEventListener('click', () => decide('keep'));
+
+  document.addEventListener('keydown', e => {
+    if(!app.classList.contains('active') || !idModal.classList.contains('hidden')) return;
+    if(e.key === 'ArrowLeft') decide('cut');
+    else if(e.key === 'ArrowDown') decide('maybe');
+    else if(e.key === 'ArrowRight') decide('keep');
+  });
+
+  thumbGrid.addEventListener('click', e => {
+    const el = e.target.closest('.thumb');
+    if(!el) return;
+    currentId = Number(el.dataset.id);
+    renderReview();
+    renderGrid();
+  });
+  thumbGrid.addEventListener('keydown', e => {
+    if(e.key !== 'Enter' && e.key !== ' ') return;
+    const el = e.target.closest('.thumb');
+    if(!el) return;
+    e.preventDefault();
+    currentId = Number(el.dataset.id);
+    renderReview();
+    renderGrid();
+  });
+
+  tabs.addEventListener('click', e => {
+    const btn = e.target.closest('.tab');
+    if(!btn) return;
+    filter = btn.dataset.filter;
+    [...tabs.children].forEach(t => t.classList.toggle('active', t === btn));
+    renderGrid();
+  });
+
+  document.getElementById('exportBtn').addEventListener('click', () => {
+    const voters = [...knownVoters].sort();
+    const result = mons.map(m => {
+      const vs = votesFor(m.key);
+      const row = { fakemon: m.name };
+      voters.forEach(v => { row[v] = vs[v] ? DECISION_LABEL[vs[v]] : null; });
+      return row;
+    });
+    const blob = new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'fakemon-selecao.json';
+    a.click();
+  });
+
+  document.getElementById('resetBtn').addEventListener('click', () => {
+    mons = [];
+    currentId = null;
+    filter = 'all';
+    app.classList.remove('active');
+    dropzone.classList.remove('hidden');
+    dropzone.querySelector('.dz-title').textContent = 'Solte o .zip aqui ou clique para escolher';
+    fileInput.value = '';
+  });
+
+  if(myName) initBackend();
+})();
+</script>
+</body>
+</html>
