@@ -562,7 +562,35 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     const { data, error } = await sb.from('fakemon').select('*').eq('room', ROOM).order('name');
     if(error){ console.error(error); return; }
     if(!data || !data.length) return;
-    mons = data.map((row, i) => ({
+
+    const rows = [];
+    for(const row of data){
+      const correctKey = keyFor(row.name);
+      if(correctKey && correctKey !== row.key){
+        const oldKey = row.key;
+        const ext = (row.storage_path.split('.').pop() || 'png');
+        const newPath = `${ROOM}/${correctKey}.${ext}`;
+        try{
+          const { error: moveErr } = await sb.storage.from(BUCKET).move(row.storage_path, newPath);
+          if(moveErr) throw moveErr;
+          const { error: updErr } = await sb.from('fakemon')
+            .update({ key: correctKey, storage_path: newPath })
+            .eq('id', row.id);
+          if(updErr) throw updErr;
+          await sb.from('votes')
+            .update({ pokemon_key: correctKey })
+            .eq('room', ROOM)
+            .eq('pokemon_key', oldKey);
+          row.key = correctKey;
+          row.storage_path = newPath;
+        }catch(err){
+          console.error('não consegui reparar', row.name, err);
+        }
+      }
+      rows.push(row);
+    }
+
+    mons = rows.map((row, i) => ({
       id: i,
       key: row.key,
       name: row.name,
@@ -632,7 +660,12 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
     return base.replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
   }
   function keyFor(name){
-    return name.toLowerCase().trim().replace(/\s+/g, '-');
+    return name
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove acentos
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')  // troca # [ ] espaços etc por traço
+      .replace(/^-+|-+$/g, '')       // tira traço nas pontas
+      .slice(0, 80) || 'item';
   }
 
   async function handleZip(file){
